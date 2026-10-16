@@ -189,8 +189,10 @@ def main():
     if os.path.isfile(ini):
         for ln in open(ini, encoding="utf-8", errors="replace"):
             s = ln.strip()
-            if s.lower().startswith("hijack_dll"):
-                hijack = s.split("=", 1)[1].strip()
+            if s.lower().startswith("hijack_dll") and "=" in s:
+                v = s.split("=", 1)[1]
+                v = v.split(";", 1)[0].split("#", 1)[0]  # strip inline comment
+                hijack = v.strip()
     base_name = hijack[:-4] if hijack.lower().endswith(".dll") else hijack
     orig = base_name + "_orig.dll"
     tgt = os.path.join(bin_dir, hijack)

@@ -1,21 +1,28 @@
-; vfsproxy configuration - lives next to vfscore.dll in the game's
-;   ...\bin\Win64_Shipping_Client\  folder.
+; vfsproxy configuration - copy to vfsproxy.ini and edit.
+; Lives next to vfscore.dll in the game's ...\bin\Win64_Shipping_Client\ folder.
 ; Redirects any file access under a "real" path to the matching "virtual" path,
 ; for every process that loads the hijacked DLL (launcher AND game).
+;
+; Keep comments on their OWN lines. Values run to end of line: a path may contain
+; ';' (it is a legal Windows filename character), so inline comments are NOT
+; stripped from path values.
 
 [settings]
-hijack_dll  = steam_api64.dll   ; the folder-only DLL to proxy (loaded by both launcher & game)
-create_dirs = 1                 ; create each virtual root at startup
-log         = 1                 ; write vfsproxy.log next to this file (set 0 once happy)
+; the folder-only DLL to proxy (loaded by both launcher & game)
+hijack_dll  = steam_api64.dll
+; create each virtual root at startup (1/0)
+create_dirs = 1
+; write vfsproxy.log next to this file (1/0; set 0 once happy)
+log         = 1
 
 [paths]
-; Pair them by number. Use full absolute paths, no trailing slash.
-Path1Real    = C:\Users\Roman\Documents\Mount and Blade II Bannerlord
-Path1Virtual = E:\Games\Steam\common\Mount & Blade II Bannerlord\TalesAge\MyDocs
+; Pair by number. Full absolute paths, no trailing slash.
+Path1Real    = C:\Users\YOU\Documents\Mount and Blade II Bannerlord
+Path1Virtual = E:\SteamLibrary\steamapps\common\Mount & Blade II Bannerlord\TalesAge\MyDocs
 
 Path2Real    = C:\ProgramData\Mount and Blade II Bannerlord
-Path2Virtual = E:\Games\Steam\common\Mount & Blade II Bannerlord\TalesAge\MyProgramData
+Path2Virtual = E:\SteamLibrary\steamapps\common\Mount & Blade II Bannerlord\TalesAge\MyProgramData
 
-; add more as needed:
-; Path3Real    = C:\Users\Roman\AppData\Roaming\SomeGame
+; add as many pairs as you like:
+; Path3Real    = C:\Users\YOU\AppData\Roaming\SomeGame
 ; Path3Virtual = E:\...\ThisInstall\MyAppData
