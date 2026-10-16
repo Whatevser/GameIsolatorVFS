@@ -295,7 +295,12 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID r)
         WCHAR *s=wcsrchr(p,L'\\'); if(s) *(s+1)=0;
         _snwprintf(g_ini,MAX_PATH,L"%svfsproxy.ini",p);
         _snwprintf(g_log,MAX_PATH,L"%svfsproxy.log",p);
-        install(NULL);
+        /* Install on a worker thread, NOT here: MH_EnableHook suspends every
+           other thread to patch, which under the loader lock faults on real
+           Windows (a dependent LoadLibrary of this DLL then fails). The thread
+           only begins once the loader lock is released. */
+        HANDLE th = CreateThread(NULL, 0, install, NULL, 0, NULL);
+        if(th) CloseHandle(th);
     }
     return TRUE;
 }
