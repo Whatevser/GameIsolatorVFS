@@ -1,0 +1,17 @@
+# build artifacts
+minhook/
+*.o
+*.obj
+*.exp
+*.lib
+*.a
+
+# runtime output
+vfsproxy.log
+
+# local config (ship only the .example)
+vfsproxy.ini
+
+# python
+__pycache__/
+*.pyc
