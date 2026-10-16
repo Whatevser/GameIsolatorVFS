@@ -63,7 +63,13 @@ loader to chase.
 The game resolves `steam_api64` functions by name, and the shipped DLL carries a
 comprehensive, recent Steamworks export set forwarding to `steam_api64_orig` — so it works
 across versions and games without regenerating anything. If some game ever ships a function
-this set lacks, regenerate the forwarder list and rebuild — see [build.sh](build.sh).
+this set lacks, build a version-matched DLL straight from that game's `steam_api64.dll`:
+
+```sh
+./build.sh "E:\...\<YourInstall>\bin\Win64_Shipping_Client\steam_api64.dll"
+```
+
+See [Building for another version](#building-for-another-version).
 
 ---
 
@@ -163,23 +169,32 @@ remove `vfsproxy.ini` / `vfsproxy.log`.
 
 ---
 
-## Building from source
+## Building for another version
 
-The repo ships the prebuilt 64-bit `steam_api64.vfs.dll`, so you need no toolchain to use
-it. To rebuild (Linux cross-compile, or an msys2 mingw64 shell on Windows):
+The repo ships a prebuilt `steam_api64.vfs.dll` that works for current games, so most people
+never build anything. If you do need a version-matched DLL, `build.sh` does the whole thing
+from a game's own `steam_api64.dll` — read its exports, generate the forwarders, compile:
 
 ```sh
-./build.sh      # clones MinHook, builds steam_api64.vfs.dll
+./build.sh "/path/to/that/steam_api64.dll"   # point it at the game's original DLL
+./build.sh                                   # or run in a folder with steam_api64_orig.dll
 ```
 
-Needs `mingw-w64` (Debian/Ubuntu: `apt install mingw-w64`). **`build.sh` only compiles the
-DLL — it does not install anything.** Installing is Option A/B/C above.
+Out comes a `steam_api64.vfs.dll` matched to that DLL (install it with any option above).
+It's a build/maintainer tool, **not** an installer — it doesn't touch any game folder.
 
-* `vfscore.c` — the redirector: INI parsing, prefix remap, the MinHook installs (on a
-  worker thread), and `DllMain`.
-* `steam_api64.def` — the Steamworks forwarders (`Name -> steam_api64_orig.Name`).
-* `build.sh` — compiles the two into `steam_api64.vfs.dll`; its header has the one-liner to
-  regenerate `steam_api64.def` from a different game's `steam_api64.dll`.
+Needs a toolchain:
+* Linux: `apt install mingw-w64 mingw-w64-tools`
+* Windows: an msys2 shell with `mingw-w64-x86_64-gcc` and `mingw-w64-x86_64-tools-git`
+
+The pieces it compiles:
+* `vfscore.c` — the redirector: INI parsing, prefix remap, the MinHook installs (on a worker
+  thread), and `DllMain`.
+* `steam_api64.def` — the generated forwarder list (`Name -> steam_api64_orig.Name`); the
+  committed copy matches the shipped DLL and `build.sh` overwrites it per run.
+
+Steamworks is resolved by name, so the forwarders are name-based; unnamed (ordinal-only)
+exports — which `steam_api64` doesn't have — are skipped.
 
 ## Notes & caveats
 
