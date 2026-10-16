@@ -79,9 +79,9 @@ flowchart LR
 ## Requirements
 
 * 64-bit Windows game that ships `steam_api64.dll` (most modern Steam games).
-* **Python 3** with **pefile** (`pip install pefile`) — only needed once, to generate
-  the proxy. Nothing is compiled on your machine; the proxy PE is built directly in
-  Python.
+* **Python 3** (standard library only) to run the installer — or just do the three
+  file operations by hand. Nothing is compiled or generated on your machine; the proxy
+  ships prebuilt.
 * 32-bit games use `steam_api.dll` and would need a 32-bit `vfscore` — not built here,
   open an issue if you want it.
 
@@ -89,8 +89,9 @@ flowchart LR
 
 1. **Edit `vfsproxy.ini`** (copy it from `vfsproxy.ini.example`). Set the real → virtual
    folder pairs you want redirected — see [Configuration](#configuration).
-2. Copy **`vfsproxy.py`**, **`vfscore.dll`** and your **`vfsproxy.ini`** into the game's
-   binary folder, next to `steam_api64.dll`. For Bannerlord that is:
+2. Copy **`vfsproxy.py`**, **`steam_api64.proxy.dll`**, **`vfscore.dll`** and your
+   **`vfsproxy.ini`** into the game's binary folder, next to its `steam_api64.dll`.
+   For Bannerlord that is:
    ```
    ...\Mount & Blade II Bannerlord\<YourInstall>\bin\Win64_Shipping_Client\
    ```
@@ -98,16 +99,16 @@ flowchart LR
    ```
    python vfsproxy.py
    ```
-   This renames `steam_api64.dll` → `steam_api64_orig.dll`, writes a new
-   `steam_api64.dll` proxy that forwards to it, and leaves `vfscore.dll` +
-   `vfsproxy.ini` beside it.
+   This renames the real `steam_api64.dll` → `steam_api64_orig.dll`, drops in the
+   prebuilt `steam_api64.proxy.dll` as `steam_api64.dll`, and places `vfscore.dll`
+   beside it. (You can also do these three file operations by hand — no Python needed.)
 4. Launch the game normally (through Steam, the launcher, or the game exe). Both the
    launcher and the game are now redirected.
 
-Re-running `vfsproxy.py` is safe and idempotent: it detects an existing proxy and just
-rebuilds it from `steam_api64_orig.dll`. If Steam ever restores the original
-`steam_api64.dll` (e.g. after *Verify integrity of game files* or a game update), run
-it again.
+Re-running `vfsproxy.py` is safe and idempotent: if `steam_api64_orig.dll` already
+exists it just refreshes the proxy and `vfscore.dll`. If Steam ever restores the
+original `steam_api64.dll` (e.g. after *Verify integrity of game files* or a game
+update), run it again.
 
 ## Configuration
 
@@ -160,42 +161,43 @@ Delete `steam_api64.dll` and `vfscore.dll`, rename `steam_api64_orig.dll` back t
 
 ---
 
-## How the proxy is generated
+## How the proxy works
 
-`vfsproxy.py` reads every export of the real `steam_api64_orig.dll` with `pefile` and
-writes a brand-new PE (`steam_api64.dll`) from scratch — no compiler needed. The proxy
-is a pure *data* DLL:
+`steam_api64.proxy.dll` (`proxy.c` + `steam_api64.def`) is a compiled forwarder DLL:
 
-* **Export table:** one forwarder per real export, `ExportName → steam_api64_orig.ExportName`,
-  preserving both names **and** ordinals (so callers that import by ordinal still resolve).
-  Windows resolves forwarders lazily, so even exports missing from an older `_orig` never
-  cause a failure unless actually called.
-* **Import table:** a single import of `vfscore.dll!VfsInit`. That is the whole trick for
-  loading the redirector — when the loader binds the proxy's import, it loads `vfscore.dll`,
-  whose `DllMain` installs the hooks. The proxy itself has no code and no entry point.
+* **Export table:** one forwarder per Steamworks export, `Name → steam_api64_orig.Name`,
+  preserving names and ordinals. Windows resolves forwarders lazily, so exports missing
+  from a given `_orig` never cause a failure unless actually called. Steam init, playtime,
+  overlay and achievements run through the real DLL unchanged.
+* **Import:** it statically imports `vfscore.dll!VfsInit`. That is the trick that loads the
+  redirector — when the loader binds the import it loads `vfscore.dll`, whose `DllMain`
+  spawns a worker thread that installs the file-API hooks.
 
-This is why it works across Steamworks SDK versions: the forwarders are generated from
-*that* game's DLL, whatever version it is.
+`vfscore.c` is the redirector: config parsing, prefix remap, and the MinHook installs. The
+hooks are installed from a worker thread, **not** from `DllMain` — MinHook suspends threads
+to patch, which faults under the loader lock on real Windows.
 
-`vfscore.c` is the redirector: config parsing, prefix remap, and the MinHook installs.
+> An earlier version generated the proxy PE in pure Python (no compiler). Convenient, but
+> the hand-built PE was rejected by the real Windows loader (`0x800701E7`), so the project
+> ships a normal **compiled** proxy instead.
 
-## Building `vfscore.dll` from source
+The shipped proxy is built from a recent Steamworks export set, which covers current games.
+If a game's `steam_api64.dll` has exports the proxy doesn't, rebuild it from that DLL — the
+export-dump one-liner and build steps are in [`build.sh`](build.sh).
 
-The repo ships a prebuilt 64-bit `vfscore.dll` so you need no toolchain. To rebuild it
-(Linux cross-compile shown; works the same with native mingw on Windows):
+## Building from source
+
+The repo ships prebuilt 64-bit `vfscore.dll` and `steam_api64.proxy.dll`, so you need no
+toolchain to use it. To rebuild both (Linux cross-compile or an msys2 mingw64 shell on
+Windows):
 
 ```sh
-./build.sh          # clones MinHook, cross-compiles vfscore.dll with mingw-w64
+./build.sh      # clones MinHook, builds vfscore.dll and steam_api64.proxy.dll
 ```
 
-or manually:
-
-```sh
-git clone --depth 1 https://github.com/TsudaKageyu/minhook
-x86_64-w64-mingw32-gcc -O2 -shared -s -static-libgcc -w -o vfscore.dll \
-    vfscore.c minhook/src/hook.c minhook/src/buffer.c minhook/src/trampoline.c \
-    minhook/src/hde/hde64.c -Iminhook/include
-```
+Needs `mingw-w64` (Debian/Ubuntu: `apt install mingw-w64`). To retarget the proxy to a
+different game's `steam_api64.dll`, regenerate `steam_api64.def` from that DLL first — the
+`pefile` one-liner is at the top of `build.sh`.
 
 ---
 
