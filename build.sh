@@ -1,17 +1,18 @@
 #!/bin/sh
-# Rebuild both binaries with mingw-w64 + MinHook.
+# Build the single self-contained steam_api64.vfs.dll with mingw-w64 + MinHook.
 # Works on Linux (cross) or in an msys2 mingw64 shell on Windows.
 #
-#   vfscore.dll            - the redirector
-#   steam_api64.proxy.dll  - forwarder proxy (imports vfscore, forwards to
-#                            steam_api64_orig) built from steam_api64.def
+# Output: steam_api64.vfs.dll
+#   - forwards every Steamworks export (steam_api64.def) to steam_api64_orig.dll
+#   - on load, hooks the Win32 file APIs and remaps real->virtual paths (vfscore.c)
+#   - depends only on kernel32 + msvcrt
 #
-# To retarget the proxy to a different game whose steam_api64 has different
-# exports, regenerate steam_api64.def from that DLL first:
+# To retarget the forwarders to a game whose steam_api64 exports differ, regenerate
+# steam_api64.def from that DLL first (needs python + pefile):
 #
-#   python - <<'PY'
-#   import pefile
-#   p=pefile.PE("steam_api64.dll",fast_load=True)
+#   python - "PATH\to\steam_api64.dll" <<'PY'
+#   import pefile,sys
+#   p=pefile.PE(sys.argv[1],fast_load=True)
 #   p.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_EXPORT']])
 #   print("EXPORTS")
 #   for s in p.DIRECTORY_ENTRY_EXPORT.symbols:
@@ -20,6 +21,8 @@
 #             else ("  steam_api64_orig.#%d @%d NONAME"%(s.ordinal,s.ordinal)))
 #   PY
 #
+# The shipped steam_api64.def already carries a comprehensive, recent Steamworks
+# export set, which covers current games without regenerating.
 set -e
 cd "$(dirname "$0")"
 
@@ -28,16 +31,11 @@ command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1 || {
 
 [ -d minhook ] || git clone --depth 1 https://github.com/TsudaKageyu/minhook
 
-MH="minhook/src/hook.c minhook/src/buffer.c minhook/src/trampoline.c minhook/src/hde/hde64.c -Iminhook/include"
-
-# 1) vfscore.dll
-x86_64-w64-mingw32-gcc -O2 -shared -s -static-libgcc -w -o vfscore.dll vfscore.c $MH
-echo "built vfscore.dll"
-
-# 2) steam_api64.proxy.dll  (needs an import lib for vfscore!VfsInit)
-printf 'EXPORTS\n  VfsInit\n' > vfscore.vfsdef
-x86_64-w64-mingw32-dlltool -d vfscore.vfsdef -l libvfscore.a -D vfscore.dll
 x86_64-w64-mingw32-gcc -O2 -shared -s -static-libgcc -w -Wl,--exclude-all-symbols \
-    -o steam_api64.proxy.dll proxy.c steam_api64.def -L. -lvfscore
-rm -f vfscore.vfsdef libvfscore.a
-echo "built steam_api64.proxy.dll"
+    -o steam_api64.vfs.dll \
+    vfscore.c \
+    minhook/src/hook.c minhook/src/buffer.c minhook/src/trampoline.c minhook/src/hde/hde64.c \
+    -Iminhook/include \
+    steam_api64.def
+
+echo "built steam_api64.vfs.dll"

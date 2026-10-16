@@ -1,13 +1,14 @@
 /*
- * vfscore.dll  --  config-driven filesystem path redirector.
+ * vfscore.c  --  config-driven filesystem path redirector.
  *
- * Loaded as a dependency of a generated proxy DLL (see vfsproxy.py) that a game
- * imports, so vfscore lands in the target process early. It reads vfsproxy.ini
- * from its own folder and hooks the Win32 path-taking file APIs: any path under
- * a configured "real" prefix is rewritten to the matching "virtual" prefix
- * before the real API sees it. Everything else passes through untouched.
+ * Compiled together with the Steamworks forwarders (steam_api64.def) into a
+ * single self-contained steam_api64.dll (see build.sh). The DLL forwards every
+ * Steamworks call to steam_api64_orig.dll and, on load, hooks the Win32
+ * path-taking file APIs: any path under a configured "real" prefix is rewritten
+ * to the matching "virtual" prefix before the real API sees it. Everything else
+ * passes through untouched. It depends only on kernel32 + msvcrt.
  *
- * INI (next to vfscore.dll):
+ * INI (next to the DLL, i.e. in the game's bin folder):
  *   [settings]
  *   create_dirs = 1          ; mkdir each virtual root at startup
  *   log         = 1          ; write vfsproxy.log next to the ini
@@ -17,14 +18,10 @@
  *   Path2Real    = C:\ProgramData\Mount and Blade II Bannerlord
  *   Path2Virtual = E:\...\TalesAge\MyProgramData
  *
- * Build (mingw-w64 + MinHook):
- *   x86_64-w64-mingw32-gcc -O2 -shared -s -static-libgcc -w -o vfscore.dll \
- *     vfscore.c minhook/src/*.c minhook/src/hde/hde64.c -Iminhook/include \
- *     -Wl,--export-all-symbols   (so the proxy can import the VfsInit marker)
+ * Build: see build.sh (mingw-w64 + MinHook + steam_api64.def).
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <shlobj.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <wctype.h>
@@ -39,9 +36,6 @@ static int   g_reallen[MAXPAIRS];
 static WCHAR g_virt[MAXPAIRS][PLEN];
 static WCHAR g_ini[MAX_PATH], g_log[MAX_PATH];
 static BOOL  g_dolog, g_createdirs;
-
-/* Exported marker so a proxy can static-import vfscore.dll and thereby load it. */
-__declspec(dllexport) void VfsInit(void) {}
 
 /* ----------------------------------------------------------------- logging */
 static void vlog(const WCHAR *fmt, ...)
@@ -64,6 +58,20 @@ static void vlog(const WCHAR *fmt, ...)
 static void rstrip(WCHAR *s){ int n=(int)wcslen(s); while(n>0 && (s[n-1]==L' '||s[n-1]==L'\t'||s[n-1]==L'\r'||s[n-1]==L'\n')) s[--n]=0; }
 static WCHAR* lstrip(WCHAR *s){ while(*s==L' '||*s==L'\t') s++; return s; }
 static void trim_trailing_sep(WCHAR *s){ int n=(int)wcslen(s); while(n>0 && (s[n-1]==L'\\'||s[n-1]==L'/')) s[--n]=0; }
+
+/* recursive mkdir using only kernel32 (no shell32 dependency) */
+static void mkdirs(const WCHAR *path){
+    WCHAR t[PLEN]; lstrcpynW(t,path,PLEN);
+    int start = (t[0] && t[1]==L':') ? 2 : 0;      /* skip drive letter */
+    for(int i=start; t[i]; i++){
+        if(t[i]==L'\\' || t[i]==L'/'){
+            WCHAR c=t[i]; t[i]=0;
+            if(i>start) CreateDirectoryW(t,NULL);
+            t[i]=c;
+        }
+    }
+    CreateDirectoryW(t,NULL);
+}
 
 /* pull the trailing integer out of a key like "Path12Real" -> 12, else -1 */
 static int key_index(const WCHAR *k){ int i=(int)wcslen(k),e=-1,v=0,m=1,any=0;
@@ -119,7 +127,7 @@ static void load_config(void)
             lstrcpynW(g_real[g_n],tmpR[i],PLEN);
             lstrcpynW(g_virt[g_n],tmpV[i],PLEN);
             g_reallen[g_n]=(int)wcslen(g_real[g_n]);
-            if(g_createdirs) SHCreateDirectoryExW(NULL,g_virt[g_n],NULL);
+            if(g_createdirs) mkdirs(g_virt[g_n]);
             g_n++;
         }
     }
