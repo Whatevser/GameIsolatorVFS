@@ -70,33 +70,45 @@ this set lacks, regenerate the forwarder list and rebuild — see [build.sh](bui
 ## Requirements
 
 * 64-bit Windows game that ships `steam_api64.dll` (most modern Steam games).
-* **Python 3** (standard library only) to run the installer — or just do the two file
-  operations by hand. Nothing is compiled or generated on your machine.
+* No runtime, no Python, nothing to compile. The DLL ships prebuilt.
 * 32-bit games use `steam_api.dll` and would need a 32-bit build — not shipped here, open
   an issue if you want it.
 
-## Install
+All installs do the same two things: rename the real `steam_api64.dll` to
+`steam_api64_orig.dll`, and drop the shipped `steam_api64.vfs.dll` in as `steam_api64.dll`.
+Pick whichever is convenient — the one-shot script, the batch file, or by hand.
 
-1. **Edit `vfsproxy.ini`** (copy it from `vfsproxy.ini.example`). Set the real → virtual
-   folder pairs you want redirected — see [Configuration](#configuration).
-2. Copy **`vfsproxy.py`**, **`steam_api64.vfs.dll`** and your **`vfsproxy.ini`** into the
-   game's binary folder, next to its `steam_api64.dll`. For Bannerlord that is:
-   ```
-   ...\Mount & Blade II Bannerlord\<YourInstall>\bin\Win64_Shipping_Client\
-   ```
-3. From that folder, run:
-   ```
-   python vfsproxy.py
-   ```
-   This renames the real `steam_api64.dll` → `steam_api64_orig.dll` and drops in the
-   self-contained `steam_api64.vfs.dll` as `steam_api64.dll`. (You can do those two file
-   operations by hand instead — no Python needed.)
-4. Launch the game normally (through Steam, the launcher, or the game exe). Both the
-   launcher and the game are now redirected.
+### Option A — one-shot PowerShell (downloads everything)
 
-Re-running `vfsproxy.py` is safe and idempotent: if `steam_api64_orig.dll` already exists
-it just refreshes the proxy. If Steam ever restores the original `steam_api64.dll` (e.g.
-after *Verify integrity of game files* or a game update), run it again.
+Open PowerShell, `cd` into the game's bin folder, and run the one-liner:
+
+```powershell
+cd "E:\...\<YourInstall>\bin\Win64_Shipping_Client"
+irm https://raw.githubusercontent.com/Whatevser/GameIsolatorVFS/main/install.ps1 | iex
+```
+
+It downloads `steam_api64.vfs.dll` (and a `vfsproxy.ini` template if you don't have one),
+does the rename + install, removes any old `vfscore.dll`, and opens the template so you can
+set your paths. Then **edit `vfsproxy.ini`** (see [Configuration](#configuration)) and launch.
+
+### Option B — batch file (offline)
+
+Download `steam_api64.vfs.dll`, `vfsproxy.ini` and `install.bat` from this repo into the
+game's bin folder, edit `vfsproxy.ini`, then double-click `install.bat`.
+
+### Option C — by hand
+
+In the bin folder: rename `steam_api64.dll` → `steam_api64_orig.dll`, copy
+`steam_api64.vfs.dll` in as `steam_api64.dll`, and put your `vfsproxy.ini` there.
+
+The bin folder for Bannerlord is:
+```
+...\Mount & Blade II Bannerlord\<YourInstall>\bin\Win64_Shipping_Client\
+```
+
+All three are idempotent: if `steam_api64_orig.dll` already exists they just refresh the
+proxy. If Steam restores the original `steam_api64.dll` (after *Verify integrity of game
+files* or an update), run the installer again.
 
 ## Configuration
 
@@ -160,7 +172,8 @@ it. To rebuild (Linux cross-compile, or an msys2 mingw64 shell on Windows):
 ./build.sh      # clones MinHook, builds steam_api64.vfs.dll
 ```
 
-Needs `mingw-w64` (Debian/Ubuntu: `apt install mingw-w64`).
+Needs `mingw-w64` (Debian/Ubuntu: `apt install mingw-w64`). **`build.sh` only compiles the
+DLL — it does not install anything.** Installing is Option A/B/C above.
 
 * `vfscore.c` — the redirector: INI parsing, prefix remap, the MinHook installs (on a
   worker thread), and `DllMain`.
@@ -177,7 +190,7 @@ Needs `mingw-w64` (Debian/Ubuntu: `apt install mingw-w64`).
 * **Antivirus** sometimes flags unsigned DLLs that install API hooks. If the DLL disappears,
   whitelist the folder.
 * **Steam → Verify integrity of game files** restores the original `steam_api64.dll`; just
-  run `vfsproxy.py` again afterwards.
+  run the installer again afterwards.
 * **Online / anti-cheat games:** intended for singleplayer / offline modded installs. Do not
   use with kernel-anti-cheat or competitive online games.
 * 64-bit only (see Requirements).

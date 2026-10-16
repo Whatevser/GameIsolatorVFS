@@ -6,11 +6,8 @@ minhook/
 *.lib
 *.a
 
-# runtime output
+# runtime output (written next to the DLL in the game folder)
 vfsproxy.log
-
-# local config (ship only the .example)
-vfsproxy.ini
 
 # python
 __pycache__/
